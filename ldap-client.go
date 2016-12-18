@@ -184,6 +184,31 @@ func (lc *LDAPClient) GetUsers() ([]string, error) {
 	return users, nil
 }
 
+// GetGroups returns the avaible groups.
+func (lc *LDAPClient) GetGroups() ([]string, error) {
+	err := lc.Connect()
+	if err != nil {
+		return nil, err
+	}
+	fieldName := valueWithFallback(lc.GroupField, "cn")
+	searchRequest := ldap.NewSearchRequest(
+		joinDn(lc.GroupDN, lc.Base),
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		"(&(objectClass=groupOfNames))",
+		[]string{fieldName},
+		nil,
+	)
+	sr, err := lc.Conn.Search(searchRequest)
+	if err != nil {
+		return nil, err
+	}
+	groups := []string{}
+	for _, entry := range sr.Entries {
+		groups = append(groups, entry.GetAttributeValue(fieldName))
+	}
+	return groups, nil
+}
+
 func joinDn(dns ...string) string {
 	result := bytes.NewBufferString("")
 	first := true
