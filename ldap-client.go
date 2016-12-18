@@ -17,10 +17,12 @@ type LDAPClient struct {
 	BindDN             string
 	BindPassword       string
 	GroupDN            string
+	GroupField         string // e.g. "cn"
 	GroupFilter        string // e.g. "(memberUid=%s)"
 	Host               string
 	ServerName         string
 	UserDN             string
+	UserField          string // e.g. "cn"
 	UserFilter         string // e.g. "(uid=%s)"
 	Conn               *ldap.Conn
 	Port               int
@@ -138,12 +140,12 @@ func (lc *LDAPClient) GetGroupsOfUser(username string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	fieldName := valueWithFallback(lc.GroupField, "cn")
 	searchRequest := ldap.NewSearchRequest(
 		joinDn(lc.GroupDN, lc.Base),
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf(lc.GroupFilter, username),
-		[]string{"cn"}, // can it be something else than "cn"?
+		[]string{fieldName},
 		nil,
 	)
 	sr, err := lc.Conn.Search(searchRequest)
@@ -152,9 +154,34 @@ func (lc *LDAPClient) GetGroupsOfUser(username string) ([]string, error) {
 	}
 	groups := []string{}
 	for _, entry := range sr.Entries {
-		groups = append(groups, entry.GetAttributeValue("cn"))
+		groups = append(groups, entry.GetAttributeValue(fieldName))
 	}
 	return groups, nil
+}
+
+// GetUsers returns the avaible users.
+func (lc *LDAPClient) GetUsers() ([]string, error) {
+	err := lc.Connect()
+	if err != nil {
+		return nil, err
+	}
+	fieldName := valueWithFallback(lc.UserField, "cn")
+	searchRequest := ldap.NewSearchRequest(
+		joinDn(lc.UserDN, lc.Base),
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		"(&(objectClass=organizationalPerson))",
+		[]string{fieldName},
+		nil,
+	)
+	sr, err := lc.Conn.Search(searchRequest)
+	if err != nil {
+		return nil, err
+	}
+	users := []string{}
+	for _, entry := range sr.Entries {
+		users = append(users, entry.GetAttributeValue(fieldName))
+	}
+	return users, nil
 }
 
 func joinDn(dns ...string) string {
@@ -172,4 +199,11 @@ func joinDn(dns ...string) string {
 		result.WriteString(dn)
 	}
 	return result.String()
+}
+
+func valueWithFallback(value string, defaultValue string) string {
+	if len(value) > 0 {
+		return value
+	}
+	return defaultValue
 }
